@@ -1,3 +1,5 @@
-__pycache__/
-*.pyc
-.env
+streamlit==1.28.0
+opencv-python==4.10.0.84
+easyocr==1.7.1
+pillow==10.0.0
+numpy==1.24.3
