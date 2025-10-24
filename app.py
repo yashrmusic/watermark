@@ -40,6 +40,7 @@ with st.sidebar:
     st.markdown('<div class="sidebar p-4">', unsafe_allow_html=True)
     st.header("Settings & Support")
     theme = st.selectbox("Theme", ["Light", "Dark"])
+    debug_mode = st.checkbox("Show debug mask (red rectangle)")
     st.markdown("""
         <h3 class="text-lg font-semibold">Support Us</h3>
         <p class="text-sm">[Your AdSense Ad Here]</p>
@@ -64,8 +65,8 @@ with col1:
     if use_manual:
         x_start = st.slider("X Start", 0, 1000, 0)
         y_start = st.slider("Y Start", 0, 1000, 0)
-        width = st.slider("Width", 10, 200, 30)
-        height = st.slider("Height", 10, 200, 20)
+        width = st.slider("Width", 10, 200, 50)
+        height = st.slider("Height", 10, 200, 50)
 
 if uploaded_file:
     with st.spinner("Processing image..."):
@@ -77,6 +78,15 @@ if uploaded_file:
         with col1:
             st.image(image, caption="Original Image", use_column_width=True)
         
+        # Preprocess image for OCR (grayscale, contrast enhancement)
+        if len(img_array.shape) == 3:
+            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+            # Increase contrast
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            gray = clahe.apply(gray)
+        else:
+            gray = img_array
+        
         # Initialize mask
         mask = np.zeros((img_height, img_width), np.uint8)
         
@@ -86,21 +96,32 @@ if uploaded_file:
         else:
             # Auto-detect watermark with EasyOCR
             reader = load_ocr_reader()
-            results = reader.readtext(img_array)
+            results = reader.readtext(gray, detail=1, paragraph=False)
             watermark_detected = False
             for (bbox, text, conf) in results:
-                if 'ai' in text.lower() and conf > 0.5:
+                if 'ai' in text.lower() and conf > 0.3:  # Lowered threshold
                     x, y = int(bbox[0][0]), int(bbox[0][1])
                     w, h = int(bbox[1][0] - bbox[0][0]), int(bbox[1][1] - bbox[0][1])
                     cv2.rectangle(mask, (x, y), (x + w, y + h), 255, -1)
                     watermark_detected = True
                     break
             
-            # Fallback to default bottom-right if no watermark detected
+            # Fallback to larger bottom-right region if no watermark detected
             if not watermark_detected:
-                st.warning("No 'ai' watermark detected. Using default bottom-right region.")
-                x_start, y_start = img_width - 30, img_height - 20
+                st.warning("No 'ai' watermark detected. Using default bottom-right region (50x50px).")
+                x_start, y_start = img_width - 50, img_height - 50
                 cv2.rectangle(mask, (x_start, y_start), (img_width, img_height), 255, -1)
+        
+        # Debug mode: Show masked region
+        if debug_mode:
+            debug_img = img_array.copy()
+            if len(debug_img.shape) == 3:
+                debug_img[mask == 255] = [255, 0, 0]  # Red mask for color images
+            else:
+                debug_img[mask == 255] = 255  # White mask for grayscale
+            debug_pil = Image.fromarray(cv2.cvtColor(debug_img, cv2.COLOR_BGR2RGB) if len(debug_img.shape) == 3 else debug_img)
+            with col2:
+                st.image(debug_pil, caption="Debug: Masked Region (Red)", use_column_width=True)
         
         # Inpainting
         try:
@@ -138,6 +159,6 @@ if uploaded_file:
 # Footer
 st.markdown("""
     <div class="text-center mt-8 p-4 bg-gray-100 dark:bg-gray-800">
-        <p class="text-sm">Built with ❤️ for educational purposes. <a href="https://github.com/yourusername/gemini-watermark-remover" class="text-blue-500">View on GitHub</a></p>
+        <p class="text-sm">Built with ❤️ for educational purposes. <a href="https://github.com/yashrmusic/watermark" class="text-blue-500">View on GitHub</a></p>
     </div>
 """, unsafe_allow_html=True)
